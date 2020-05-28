@@ -20,7 +20,7 @@ def trainNetworkWithLinearClassifier(pic_matrix, label_matrix):
 
     # Create random Tensors for weights.
     w = torch.randn(pixel_num, class_num, device=device, dtype=dtype, requires_grad=True)
-    b = torch.randn(batch_num, class_num, device=device, dtype=dtype, requires_grad=True)
+    b = torch.randn(1, class_num, device=device, dtype=dtype, requires_grad=True)
 
     learning_rate = 1e-7
     learning_round = 1000
@@ -34,37 +34,23 @@ def trainNetworkWithLinearClassifier(pic_matrix, label_matrix):
                 np.vstack((pic_matrix[seed:seed + batch_num, :], pic_matrix[0:batch_num - train_pic_num + seed, :])))
             y = torch.from_numpy(
                 np.hstack((label_matrix[seed:seed + batch_num], label_matrix[0:batch_num - train_pic_num + seed])))
-        # Forward pass: compute predicted y using operations on Tensors; these
-        # are exactly the same operations we used to compute the forward pass using
-        # Tensors, but we do not need to keep references to intermediate values since
-        # we are not implementing the backward pass by hand.
-        y_pred = x.mm(w) + b
+        b_batch = b
+        for i in range(batch_num - 1):
+            b_batch = torch.cat([b, b_batch], dim=0)
 
-        # Compute and print loss using operations on Tensors.
-        # Now loss is a Tensor of shape (1,)
-        # loss.item() gets the scalar value held in the loss.
+        y_pred = x.mm(w) + b_batch
+
         loss_fn = torch.nn.CrossEntropyLoss()
         loss = loss_fn(y_pred, y.long())
         if t % 100 == 99:
             print(t, loss.item())
 
-        # Use autograd to compute the backward pass. This call will compute the
-        # gradient of loss with respect to all Tensors with requires_grad=True.
-        # After this call w1.grad and w2.grad will be Tensors holding the gradient
-        # of the loss with respect to w1 and w2 respectively.
         loss.backward()
 
-        # Manually update weights using gradient descent. Wrap in torch.no_grad()
-        # because weights have requires_grad=True, but we don't need to track this
-        # in autograd.
-        # An alternative way is to operate on weight.data and weight.grad.data.
-        # Recall that tensor.data gives a tensor that shares the storage with
-        # tensor, but doesn't track history.
-        # You can also use torch.optim.SGD to achieve this.
         with torch.no_grad():
             w -= learning_rate * w.grad
             b -= learning_rate * b.grad
-
             # Manually zero the gradients after updating weights
             w.grad.zero_()
             b.grad.zero_()
+    return w.detach().numpy(), b.detach().numpy()

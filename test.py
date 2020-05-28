@@ -1,6 +1,6 @@
 import os
 import cv2
-
+import numpy as np
 pic_dir = "D:\\Coding\\Others\\COVID"
 all_dir = os.path.join(pic_dir, "all")
 height, width, scale = 0, 0, 0
