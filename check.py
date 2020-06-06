@@ -5,6 +5,7 @@ import torch
 from torch import optim, nn
 from torchvision import transforms, datasets
 from torch.utils.data import Dataset, DataLoader, TensorDataset
+from sklearn.metrics import precision_score, recall_score
 import config
 
 
@@ -57,12 +58,13 @@ def testTheAccuracyOfNetwork(model, COVID_dir):
                               [0.229, 0.224, 0.225])
          ])
     train_datasets = datasets.ImageFolder(test_directory, transform=test_transforms)  # 用ImageFolder组织测试集
-    test_data = DataLoader(train_datasets, batch_size=config.BATCH_SIZE, shuffle=True)  # 读取数据
+    test_num = len(train_datasets)
+    test_data = DataLoader(train_datasets, batch_size=test_num, shuffle=True)  # 读取数据,batch_size设置为全部
 
     # 验证过程
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # 设置设备
     model.eval()  # 设置model为验证模式
-    train_acc = 0  # 初始化准确率
+    accuracy = 0  # 初始化准确率
 
     # 开始验证
     for i, (inputs, labels) in enumerate(test_data):
@@ -77,11 +79,8 @@ def testTheAccuracyOfNetwork(model, COVID_dir):
         # 计算准确率
         # torch.max函数返回的是每行最大数ret和他们的索引位置predictions
         ret, predictions = torch.max(outputs.data, 1)
-        # eq函数返回label和predictions比较后的结果，是一个list，某位置为1代表该位置预测正确
-        correct_counts = predictions.eq(labels.data.view_as(predictions))
-        # 将correct_counts里的数加起来，也就是预测正确的个数
-        acc = torch.sum(correct_counts.type(torch.FloatTensor))
-        train_acc += acc.item()
-    train_acc = train_acc / 50
-    print(train_acc)
+        accuracy = precision_score(labels.cpu(), predictions.cpu())
+        recall = recall_score(labels.cpu(), predictions.cpu())
 
+    print("准确率为：%.2f" % (accuracy * 100))
+    print("召回率为：%.2f" % (recall * 100))

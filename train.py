@@ -9,6 +9,7 @@ from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import time
+from sklearn.metrics import precision_score, recall_score
 import config
 
 
@@ -31,6 +32,7 @@ def train_LinearClassifier(pic_matrix, label_matrix):
 
     learning_rate = 1e-5
     learning_round = 1000
+    loss_rec = []
     for t in range(learning_round):
         seed = random.randint(0, train_pic_num - 1)
         if seed <= train_pic_num - batch_num:
@@ -50,7 +52,7 @@ def train_LinearClassifier(pic_matrix, label_matrix):
         # calculate the loss
         loss_fn = torch.nn.CrossEntropyLoss()
         loss = loss_fn(y_pred, y.long())
-
+        loss_rec.append(loss.item())
         print(t, loss.item())
 
         # backward
@@ -62,17 +64,29 @@ def train_LinearClassifier(pic_matrix, label_matrix):
             # Manually zero the gradients after updating weights
             w.grad.zero_()
             b.grad.zero_()
+    # 训练结束后作图
+    x_axis = range(1, 1001)
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_title("Loss in Training")
+    ax.set_ylabel("proportion")
+    ax.set_xlabel("epoch")
+    ax.grid(which='minor', alpha=0.5)  # 设置网格
+    ax.grid(which='major', alpha=0.5)
+    ax.plot(x_axis, loss_rec, 'r', label="Train Loss")
+    ax.legend()
+    plt.show()
     return w.detach().numpy(), b.detach().numpy()
 
 
-def train_ResNet50(train_data, valid_data, train_data_size, valid_data_size):
+def train_ResNet50(train_data, valid_data):
     # 设置device为cuda
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # 若有gpu可用则用gpu
 
     # 使用ResNet50
     model = models.resnet50(pretrained=True)
 
-    # 冻结参数
+    # 冻结参数梯度
     for param in model.parameters():
         param.requires_grad = False
 
@@ -91,7 +105,6 @@ def train_ResNet50(train_data, valid_data, train_data_size, valid_data_size):
     optimizer = optim.Adam(model.parameters())
 
     # 训练过程
-
     record = []  # 保存训练过程中的数据
     best_acc = 0.0  # 保存最佳准确率
     best_epoch = 0  # 保存最好轮次数
@@ -104,9 +117,11 @@ def train_ResNet50(train_data, valid_data, train_data_size, valid_data_size):
 
         # 初始化记录值
         train_loss = 0.0
-        train_acc = 0.0
+        train_accuracy = 0.0
+        train_recall = 0.0
         valid_loss = 0.0
-        valid_acc = 0.0
+        valid_accuracy = 0.0
+        valid_recall = 0.0
 
         # 开始训练
         for i, (inputs, labels) in enumerate(train_data):  # 从train_data中读取input和label
@@ -134,9 +149,10 @@ def train_ResNet50(train_data, valid_data, train_data_size, valid_data_size):
             # 记录train_loss和train_accuracy值
             train_loss += loss.item() * inputs.size(0)
             ret, predictions = torch.max(outputs.data, 1)
-            correct_counts = predictions.eq(labels.data.view_as(predictions))
-            acc = torch.mean(correct_counts.type(torch.FloatTensor))
-            train_acc += acc.item() * inputs.size(0)
+            acc = precision_score(labels.cpu(), predictions.cpu())
+            recall = recall_score(labels.cpu(), predictions.cpu())
+            train_accuracy += acc * inputs.size(0)
+            train_recall += recall * inputs.size(0)
 
         # 验证集
         with torch.no_grad():
@@ -153,16 +169,23 @@ def train_ResNet50(train_data, valid_data, train_data_size, valid_data_size):
                 # 同上
                 valid_loss += loss.item() * inputs.size(0)
                 ret, predictions = torch.max(outputs.data, 1)
-                correct_counts = predictions.eq(labels.data.view_as(predictions))
-                acc = torch.mean(correct_counts.type(torch.FloatTensor))
-                valid_acc += acc.item() * inputs.size(0)
+                v_acc = precision_score(labels.cpu(), predictions.cpu())
+                v_recall = recall_score(labels.cpu(), predictions.cpu())
+                valid_accuracy += v_acc * inputs.size(0)
+                valid_recall += v_recall * inputs.size(0)
 
         # 计算平均损失和准确率并保存至record
+        train_data_size = len(train_data.dataset)
+        valid_data_size = len(valid_data.dataset)
         avg_train_loss = train_loss / train_data_size
-        avg_train_acc = train_acc / train_data_size
+        avg_train_acc = train_accuracy / train_data_size
+        avg_train_recall = train_recall / train_data_size
         avg_valid_loss = valid_loss / valid_data_size
-        avg_valid_acc = valid_acc / valid_data_size
-        record.append([avg_train_loss, avg_valid_loss, avg_train_acc, avg_valid_acc])
+        avg_valid_acc = valid_accuracy / valid_data_size
+        avg_valid_recall = valid_recall / valid_data_size
+        print(avg_valid_recall)
+        record.append(
+            [avg_train_loss, avg_valid_loss, avg_train_acc, avg_valid_acc, avg_train_recall, avg_valid_recall])
 
         # 记录最高准确性的模型
         if avg_valid_acc > best_acc:
@@ -173,9 +196,9 @@ def train_ResNet50(train_data, valid_data, train_data_size, valid_data_size):
 
         # 打印信息
         print(
-            "Epoch: {:03d}, Training: Loss: {:.4f}, Accuracy: {:.4f}%, \n\t\tValidation: Loss: {:.4f}, Accuracy: {:.4f}%, Time: {:.4f}s".format(
-                epoch + 1, avg_valid_loss, avg_train_acc * 100, avg_valid_loss, avg_valid_acc * 100,
-                epoch_end - epoch_start))
+            "Epoch: {:03d}, Training: Loss: {:.4f}, Accuracy: {:.4f}%, Recall: {:.4f}%\n\t\tValidation: Loss: {:.4f}, Accuracy: {:.4f}%, Recall: {:.4f}%. Time: {:.4f}s".format(
+                epoch + 1, avg_valid_loss, avg_train_acc * 100, avg_train_recall * 100, avg_valid_loss,
+                avg_valid_acc * 100, avg_valid_recall * 100, epoch_end - epoch_start))
         print("Best Accuracy for validation : {:.4f} at epoch {:03d}".format(best_acc, best_epoch))
 
     # 训练结束后作图
@@ -185,17 +208,15 @@ def train_ResNet50(train_data, valid_data, train_data_size, valid_data_size):
     plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
     fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
-    ax.set_title("训练过程中的Loss值和准确率")
-    ax.set_ylabel("Loss值")
-    ax.set_xlabel("训练轮数")
+    ax.set_title("Loss, Accuracy and Recall in Training")
+    ax.set_ylabel("proportion")
+    ax.set_xlabel("epoch")
     ax.grid(which='minor', alpha=0.5)  # 设置网格
     ax.grid(which='major', alpha=0.5)
-    ax.plot(x_axis, record_T[0], 'y', label="train loss")
-    ax.plot(x_axis, record_T[1], 'g', label="valid loss")
-    ax.plot(x_axis, record_T[2], 'y', label="train accuracy")
-    ax.plot(x_axis, record_T[3], 'g', label="valid accuracy")
+    ax.plot(x_axis, record_T[0], 'r', label="Train Loss")
+    ax.plot(x_axis, record_T[2], 'g', label="Train Accuracy")
+    ax.plot(x_axis, record_T[4], 'y', label="Train Recall")
     ax.legend()
     plt.show()
-
 
     return model, record

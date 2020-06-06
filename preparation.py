@@ -8,7 +8,7 @@ import config
 
 
 # 线性分类器的旧的导入设置，没有什么用了
-def importAndPreprocessPictures_manually(dir, COVID_file="train\\train_COVID", NonCOVID_file="train\\train_NonCOVID"):
+def importAndPreprocessPictures_manually(dir, COVID_file="train\\COVID", NonCOVID_file="train\\NonCOVID"):
     width_trans = 425
     height_trans = 302
     pic_matrix = np.zeros((width_trans * height_trans,), dtype=np.float)
@@ -22,8 +22,8 @@ def importAndPreprocessPictures_manually(dir, COVID_file="train\\train_COVID", N
         img_gray = cv2.cvtColor(img_resize, cv2.COLOR_RGB2GRAY)
         img_1D = np.reshape(img_gray, height_trans * width_trans)
         pic_matrix = np.vstack((pic_matrix, img_1D))
-        cv2.imshow("123", img_gray)
-        cv2.waitKey(0)
+        # cv2.imshow("123", img_gray)
+        # cv2.waitKey(0)
     # read pic from train_COVID
     for pic in os.listdir(os.path.join(dir, COVID_file)):
         img = cv2.imread(os.path.join(dir, COVID_file, pic))
@@ -37,11 +37,12 @@ def importAndPreprocessPictures_manually(dir, COVID_file="train\\train_COVID", N
     return pic_matrix, label_matrix
 
 
+# 从csv导入图片数据,没有什么用了
 def readGeneratedData():
-    # 从csv导入图片数据
     pic_matrix = np.loadtxt("pic_matrix.csv", delimiter=',')
     label_matrix = np.loadtxt("label_matrix.csv", delimiter=',')
     return pic_matrix, label_matrix
+
 
 # ResNet50的图片导入
 def importAndPrepocessPictures(dir):
@@ -59,20 +60,20 @@ def importAndPrepocessPictures(dir):
 
     # 读取train_data和valid_data
     train_datasets = datasets.ImageFolder(train_directory, transform=train_transforms)
-    train_data_size = len(train_datasets)
     train_data = DataLoader(train_datasets, batch_size=batch_size, shuffle=True)
     valid_datasets = datasets.ImageFolder(valid_directory, transform=train_transforms)
-    valid_data_size = len(valid_datasets)
     valid_data = DataLoader(valid_datasets, batch_size=batch_size, shuffle=True)
 
     # 看一下处理后的样子
-    # print(train_data_size, valid_data_size)
+    # a = 0
     # for images, labels in train_data:
-    #     print(labels)
+    #     a += 1
     #     img = images[0]
     #     img = img.numpy()
     #     img = np.transpose(img, (1, 2, 0))
-    #     cv2.imshow("123",img)
+    #     cv2.imshow("123", img)
+    #     str_img = "resize{:03d}.jpg".format(a)
+    #     cv2.imwrite(str_img, img)
     #     cv2.waitKey(0)
 
-    return train_data, valid_data, train_data_size, valid_data_size
+    return train_data, valid_data
