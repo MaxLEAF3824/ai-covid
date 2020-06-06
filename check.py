@@ -1,30 +1,87 @@
 import os
 import numpy as np
 import cv2
+import torch
+from torch import optim, nn
+from torchvision import transforms, datasets
+from torch.utils.data import Dataset, DataLoader, TensorDataset
+import config
 
 
-def testTheAccuracyOfNetwork(w, b, dir):
+def testTheAccuracyOfNetwork_Lin(w, b, dir, COVID_file, NonCOVID_file):
     count = 0
     width_trans = 425
     height_trans = 302
-    pic_matrix = np.zeros((width_trans * height_trans,), dtype=np.float)
-    NonCOVID_file_num = len(os.listdir(os.path.join(dir, "test_NonCOVID")))
-    COVID_file_num = len(os.listdir(os.path.join(dir, "test_COVID")))
-    label_matrix = np.hstack((np.zeros(NonCOVID_file_num), np.ones(COVID_file_num)))
-    for pic in os.listdir(os.path.join(dir, "test_NonCOVID")):
-        img = cv2.imread(os.path.join(dir, "test_NonCOVID", pic))
+    # 无COVID检验集数量
+    NonCOVID_file_num = len(os.listdir(os.path.join(dir, NonCOVID_file)))
+    # COVID检验集数量
+    COVID_file_num = len(os.listdir(os.path.join(dir, COVID_file)))
+
+    for pic in os.listdir(os.path.join(dir, NonCOVID_file)):
+        img = cv2.imread(os.path.join(dir, NonCOVID_file, pic))
         img_resize = cv2.resize(img, (width_trans, height_trans))
         img_gray = cv2.cvtColor(img_resize, cv2.COLOR_RGB2GRAY)
         img_1D = np.reshape(img_gray, height_trans * width_trans)
         score = img_1D.dot(w) + b
         if score[0][0] > score[0][1]:
             count += 1
-    for pic in os.listdir(os.path.join(dir, "test_COVID")):
-        img = cv2.imread(os.path.join(dir, "test_COVID", pic))
+            print("Correct")
+        else:
+            print("Wrong")
+    accuracy0 = count / NonCOVID_file_num * 100
+    for pic in os.listdir(os.path.join(dir, COVID_file)):
+        img = cv2.imread(os.path.join(dir, COVID_file, pic))
         img_resize = cv2.resize(img, (width_trans, height_trans))
         img_gray = cv2.cvtColor(img_resize, cv2.COLOR_RGB2GRAY)
         img_1D = np.reshape(img_gray, height_trans * width_trans)
-        pscore = img_1D.dot(w) + b
+        score = img_1D.dot(w) + b
         if score[0][0] < score[0][1]:
             count += 1
-    print("准确率：%d%%" % (count / (COVID_file_num + NonCOVID_file_num) * 100))
+            print("Correct")
+        else:
+            print("Wrong")
+    accuracy1 = (count - accuracy0 / 100 * NonCOVID_file_num) / COVID_file_num * 100
+    print("NonCOVID准确率：%d%%" % accuracy0)
+    print("COVID准确率：%d%%" % accuracy1)
+    print("综合准确率：%d%%" % (count / (COVID_file_num + NonCOVID_file_num) * 100))
+
+
+def testTheAccuracyOfNetwork(model, COVID_dir):
+    # 数据增强
+    test_directory = os.path.join(COVID_dir, "test")  # 设置测试集目录
+    test_transforms = transforms.Compose(  # 设置transform
+        [transforms.Resize(size=(302, 425)),  # 缩放到302*425
+         transforms.CenterCrop(size=(272, 395)),  # 中心裁剪到224*224
+         transforms.ToTensor(),  # 转化成张量
+         transforms.Normalize([0.485, 0.456, 0.406],  # 归一化
+                              [0.229, 0.224, 0.225])
+         ])
+    train_datasets = datasets.ImageFolder(test_directory, transform=test_transforms)  # 用ImageFolder组织测试集
+    test_data = DataLoader(train_datasets, batch_size=config.BATCH_SIZE, shuffle=True)  # 读取数据
+
+    # 验证过程
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # 设置设备
+    model.eval()  # 设置model为验证模式
+    train_acc = 0  # 初始化准确率
+
+    # 开始验证
+    for i, (inputs, labels) in enumerate(test_data):
+        # 调整数据类型与model一致
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        model = model.to(device)
+
+        # 前向计算
+        outputs = model(inputs)
+
+        # 计算准确率
+        # torch.max函数返回的是每行最大数ret和他们的索引位置predictions
+        ret, predictions = torch.max(outputs.data, 1)
+        # eq函数返回label和predictions比较后的结果，是一个list，某位置为1代表该位置预测正确
+        correct_counts = predictions.eq(labels.data.view_as(predictions))
+        # 将correct_counts里的数加起来，也就是预测正确的个数
+        acc = torch.sum(correct_counts.type(torch.FloatTensor))
+        train_acc += acc.item()
+    train_acc = train_acc / 50
+    print(train_acc)
+
